@@ -205,3 +205,129 @@ def get_cve_cache_ttl() -> int:
     except ValueError:
         return 86400
 
+
+def get_tool_calling_enabled() -> bool:
+    """When True, use native LLM tool calling for execute mode (Phase 1). Default: on."""
+    return os.getenv("DAV_TOOL_CALLING", "true").lower() not in ("0", "false", "no", "off")
+
+
+def get_legacy_exec_marker_enabled() -> bool:
+    """Allow >>>EXEC<<< text parsing as fallback alongside tool calling."""
+    return os.getenv("DAV_LEGACY_EXEC_MARKER", "true").lower() not in ("0", "false", "no", "off")
+
+
+def security_pack_enabled() -> bool:
+    """CVE / vulnerability features (optional install extra)."""
+    return os.getenv("DAV_DISABLE_SECURITY_PACK", "").lower() not in ("1", "true", "yes")
+
+
+def automation_pack_enabled() -> bool:
+    """Script generation / listing (optional install extra)."""
+    return os.getenv("DAV_DISABLE_AUTOMATION_PACK", "").lower() not in ("1", "true", "yes")
+
+
+def get_sandbox_mode() -> str:
+    """Sandbox: auto (use bwrap when available), on (strict), off."""
+    return os.getenv("DAV_SANDBOX", "auto").lower().strip()
+
+
+def get_workspace_roots() -> List[str]:
+    """Comma-separated extra roots to bind into the sandbox (default: cwd)."""
+    raw = os.getenv("DAV_WORKSPACE_ROOT", "").strip()
+    if not raw:
+        try:
+            return [os.getcwd()]
+        except Exception:
+            return [str(Path.home())]
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def use_daemon() -> bool:
+    """Route execution through davd when True and socket available."""
+    return os.getenv("DAV_USE_DAEMON", "").lower() in ("1", "true", "yes")
+
+
+def get_daemon_socket_path() -> Path:
+    p = os.getenv("DAV_SOCKET_PATH", "").strip()
+    if p:
+        return Path(p).expanduser()
+    return Path.home() / ".dav" / "davd.sock"
+
+
+def sandbox_strict_mode() -> bool:
+    """If True and DAV_SANDBOX=on but bwrap missing, fail closed for sandboxed runs."""
+    return os.getenv("DAV_SANDBOX_STRICT", "").lower() in ("1", "true", "yes")
+
+
+def index_enabled() -> bool:
+    """Phase 3: workspace FTS index for retrieval-augmented prompts."""
+    return os.getenv("DAV_INDEX_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+def get_index_root() -> Path:
+    raw = os.getenv("DAV_INDEX_ROOT", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    try:
+        return Path(os.getcwd()).resolve()
+    except Exception:
+        return Path.home()
+
+
+def get_index_data_dir() -> Path:
+    p = os.getenv("DAV_INDEX_DATA_DIR", "").strip()
+    if p:
+        return Path(p).expanduser().resolve()
+    return Path.home() / ".dav" / "index"
+
+
+def get_index_max_file_bytes() -> int:
+    try:
+        v = int(os.getenv("DAV_INDEX_MAX_FILE_BYTES", str(512 * 1024)))
+        return max(1024, min(v, 8 * 1024 * 1024))
+    except ValueError:
+        return 512 * 1024
+
+
+def get_index_context_max_chars() -> int:
+    try:
+        v = int(os.getenv("DAV_INDEX_CONTEXT_MAX_CHARS", "12000"))
+        return max(1000, min(v, 100_000))
+    except ValueError:
+        return 12000
+
+
+def routing_enabled() -> bool:
+    return os.getenv("DAV_ROUTING_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+def get_routing_config_path() -> Path:
+    p = os.getenv("DAV_ROUTING_CONFIG", "").strip()
+    if p:
+        return Path(p).expanduser()
+    return Path.home() / ".dav" / "model_routing.json"
+
+
+def mcp_tools_enabled() -> bool:
+    """Expose mcp_invoke to the model when True (still requires trust registry entry to run)."""
+    return os.getenv("DAV_MCP_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+def get_mcp_trust_config_path() -> Path:
+    p = os.getenv("DAV_MCP_TRUST_CONFIG", "").strip()
+    if p:
+        return Path(p).expanduser()
+    return Path.home() / ".dav" / "mcp_trust.json"
+
+
+def get_mcp_catalog_path() -> Path:
+    p = os.getenv("DAV_MCP_CATALOG_PATH", "").strip()
+    if p:
+        return Path(p).expanduser()
+    return Path.home() / ".dav" / "mcp_catalog.json"
+
+
+def mcp_catalog_enforced() -> bool:
+    """If True, MCP servers must appear in catalog approved_servers."""
+    return os.getenv("DAV_MCP_CATALOG_ENFORCE", "").lower() in ("1", "true", "yes")
+

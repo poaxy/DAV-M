@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -642,13 +643,22 @@ def _print_command_output(stdout: str, stderr: str) -> None:
         print(stderr, file=sys.stderr)
 
 
-def execute_plan(plan: CommandPlan, confirm: bool = True, context: Optional[Dict] = None, automation_mode: bool = False, automation_logger: Optional[Any] = None) -> List[ExecutionResult]:
+def execute_plan(
+    plan: CommandPlan,
+    confirm: bool = True,
+    context: Optional[Dict] = None,
+    automation_mode: bool = False,
+    automation_logger: Optional[Any] = None,
+    auto_confirm: bool = False,
+) -> List[ExecutionResult]:
     """
-    Execute a structured command plan.
+    Execute a structured command plan via policy + exec_shell dispatch.
     
     Returns:
         List of ExecutionResult objects for each command executed.
     """
+    from dav.tools.dispatch import dispatch_tool_call
+
     results: List[ExecutionResult] = []
     
     render_info("Command plan received:")
@@ -667,30 +677,43 @@ def execute_plan(plan: CommandPlan, confirm: bool = True, context: Optional[Dict
             f"Proceeding with execution, but commands may not work as expected."
         )
 
+    batch_preconfirmed = False
     if confirm:
         if not confirm_action("Execute ALL commands above?"):
             render_warning("Command execution cancelled by user")
             return results
+        batch_preconfirmed = True
+    else:
+        batch_preconfirmed = auto_confirm
 
     for idx, command in enumerate(plan.commands, 1):
         if len(plan.commands) > 1:
             render_info(f"Running command {idx}/{len(plan.commands)}")
 
-        success, stdout, stderr, return_code = execute_command(
-            command, 
-            confirm=False, 
-            cwd=plan.cwd,
-            stream_output=not automation_mode,
+        args: Dict[str, Any] = {"command": command}
+        if plan.cwd:
+            args["cwd"] = plan.cwd
+        tr = dispatch_tool_call(
+            "exec_shell",
+            json.dumps(args),
+            execute_enabled=True,
+            auto_confirm=auto_confirm,
+            read_only_mode=False,
+            preconfirmed=batch_preconfirmed,
             automation_mode=automation_mode,
             automation_logger=automation_logger,
         )
-        
+        success = tr.ok
+        stdout = tr.stdout
+        stderr = tr.stderr
+        return_code = tr.exit_code
+
         result = ExecutionResult(
             command=command,
             success=success,
             stdout=stdout,
             stderr=stderr,
-            return_code=return_code
+            return_code=return_code,
         )
         results.append(result)
 
@@ -712,6 +735,7 @@ def execute_commands_from_response(
     plan: Optional[CommandPlan] = None,
     automation_mode: bool = False,
     automation_logger: Optional[Any] = None,
+    auto_confirm: bool = False,
 ) -> List[ExecutionResult]:
     """
     Execute commands extracted from response or provided via command plan.
@@ -719,8 +743,10 @@ def execute_commands_from_response(
     Returns:
         List of ExecutionResult objects for each command executed.
     """
+    from dav.tools.dispatch import dispatch_tool_call
+
     results: List[ExecutionResult] = []
-    
+
     from dav.input_validator import validate_ai_response
     is_valid, validation_error = validate_ai_response(response)
     if not is_valid:
@@ -729,7 +755,14 @@ def execute_commands_from_response(
             automation_logger.log_warning(f"Response validation warning: {validation_error}")
     
     if plan is not None:
-        return execute_plan(plan, confirm=confirm, context=context, automation_mode=automation_mode, automation_logger=automation_logger)
+        return execute_plan(
+            plan,
+            confirm=confirm,
+            context=context,
+            automation_mode=automation_mode,
+            automation_logger=automation_logger,
+            auto_confirm=auto_confirm,
+        )
     
     commands = extract_commands(response)
     
@@ -745,21 +778,28 @@ def execute_commands_from_response(
     for i, command in enumerate(commands, 1):
         if len(commands) > 1:
             render_info(f"Executing command {i}/{len(commands)}")
-        
-        success, stdout, stderr, return_code = execute_command(
-            command, 
-            confirm=confirm,
-            stream_output=not automation_mode,
+
+        tr = dispatch_tool_call(
+            "exec_shell",
+            json.dumps({"command": command}),
+            execute_enabled=True,
+            auto_confirm=auto_confirm,
+            read_only_mode=False,
+            preconfirmed=not confirm,
             automation_mode=automation_mode,
             automation_logger=automation_logger,
         )
-        
+        success = tr.ok
+        stdout = tr.stdout
+        stderr = tr.stderr
+        return_code = tr.exit_code
+
         result = ExecutionResult(
             command=command,
             success=success,
             stdout=stdout,
             stderr=stderr,
-            return_code=return_code
+            return_code=return_code,
         )
         results.append(result)
         

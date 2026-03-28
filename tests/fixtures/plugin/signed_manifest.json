@@ -1,0 +1,8 @@
+{
+  "manifest_version": 1,
+  "name": "fixture-plugin",
+  "version": "1.0.0",
+  "entry_point": "dav.plugins",
+  "tools": [],
+  "signature": "yDSAp8MkP19eimaIFQHSeKwMqEiWsqsaDP95pMg7/jA7Hwv0jToZutRwONWDHKNTJah3vPDI/8H4cHoY9X6dCA=="
+}

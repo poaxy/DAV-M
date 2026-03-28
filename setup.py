@@ -30,9 +30,16 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=requirements,
+    extras_require={
+        "security": [],
+        "automation": [],
+        "mcp": ["mcp>=1.0.0; python_version>='3.10'"],
+        "plugins": ["cryptography>=42.0.0"],
+    },
     entry_points={
         "console_scripts": [
-            "dav=dav.cli:app",
+            "dav=dav.cli_entry:main",
+            "davd=davd.server:main",
         ],
     },
 )

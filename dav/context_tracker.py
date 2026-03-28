@@ -96,12 +96,17 @@ class ContextTracker:
         overestimating usage for simple analysis queries.
         """
         from dav.ai_backend import get_system_prompt
-        
+        from dav.config import get_tool_calling_enabled
+
+        tool_calling = (
+            self._execute_mode and get_tool_calling_enabled() and not self._log_mode
+        )
         system_prompt = get_system_prompt(
             execute_mode=self._execute_mode,
             interactive_mode=self._interactive_mode,
             automation_mode=False,
             log_mode=self._log_mode,
+            tool_calling=tool_calling,
         )
         self.system_prompt_tokens = count_tokens(
             system_prompt, 

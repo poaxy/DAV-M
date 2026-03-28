@@ -4,7 +4,10 @@ import re
 import sys
 import threading
 import time
-from typing import Any, ContextManager, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Any, ContextManager, Iterator, Optional, Tuple
+
+if TYPE_CHECKING:
+    from dav.status_panel import StatusPanelExtras
 
 import questionary
 from prompt_toolkit.formatted_text import FormattedText
@@ -228,7 +231,12 @@ def format_interactive_prompt(mode: str = "interactive") -> Text:
     return prompt_text
 
 
-def render_context_status_panel(usage, model: str, backend: str) -> None:
+def render_context_status_panel(
+    usage,
+    model: str,
+    backend: str,
+    extras: Optional["StatusPanelExtras"] = None,
+) -> None:
     """
     Render context usage status in a colored border panel.
     
@@ -262,11 +270,17 @@ def render_context_status_panel(usage, model: str, backend: str) -> None:
     
     # Build panel content
     # Format: [light orange]context: 4.2K/128.0K (3.3%)[/light orange] | [cyan]model: gpt-4[/cyan]
-    content = (
+    row1 = (
         f"[{context_color_rgb}]context: {used_k:.1f}K/{max_k:.1f}K ({usage.usage_percentage:.1f}%)[/{context_color_rgb}] "
         f"[dim]│[/dim] "
         f"[cyan]model: {model_short}[/cyan]"
     )
+    if extras is not None:
+        from dav.status_panel import format_status_extras_line
+
+        content = format_status_extras_line(extras) + "\n" + row1
+    else:
+        content = row1
     
     # Create panel with colored border
     panel = Panel(
@@ -279,7 +293,12 @@ def render_context_status_panel(usage, model: str, backend: str) -> None:
     console.print(panel)
 
 
-def render_context_status(usage, model: Optional[str] = None, backend: Optional[str] = None) -> None:
+def render_context_status(
+    usage,
+    model: Optional[str] = None,
+    backend: Optional[str] = None,
+    extras: Optional["StatusPanelExtras"] = None,
+) -> None:
     """
     Render context usage status in a colored border panel.
     
@@ -289,7 +308,7 @@ def render_context_status(usage, model: Optional[str] = None, backend: Optional[
         backend: Backend name (optional, for panel display)
     """
     if model and backend:
-        render_context_status_panel(usage, model, backend)
+        render_context_status_panel(usage, model, backend, extras=extras)
     else:
         # Fallback to simple line if model/backend not provided
         from dav.context_tracker import ContextUsage
@@ -314,7 +333,7 @@ def render_command(command: str) -> None:
     console.print(Panel(syntax, border_style="cyan", title="Command"))
 
 
-def confirm_action(message: str) -> bool:
+def confirm_action(message: str, *, risk_hint: Optional[str] = None) -> bool:
     """
     Confirm an action with the user using arrow key navigation.
     
@@ -323,16 +342,20 @@ def confirm_action(message: str) -> bool:
     
     Args:
         message: Confirmation message to display
+        risk_hint: Optional extra line describing risk (doc 08 permission UX).
     
     Returns:
         True if "Allow" selected, False if "Deny" selected or cancelled
     """
+    full_message = message
+    if risk_hint:
+        full_message = f"{message}\n{risk_hint}"
     # Check if we're in a TTY environment
     if not sys.stdin.isatty():
         # Fall back to /dev/tty for piped input scenarios
         try:
             with open("/dev/tty", "r+") as tty_file:
-                tty_file.write(f"{message} (y/N): ")
+                tty_file.write(f"{full_message} (y/N): ")
                 tty_file.flush()
                 response = tty_file.readline().strip().lower()
                 return response in ("y", "yes")
@@ -365,7 +388,7 @@ def confirm_action(message: str) -> bool:
         ])
         
         result = questionary.select(
-            message,
+            full_message,
             choices=[allow_choice, deny_choice],
             default=ALLOW_TEXT,
             style=custom_style,

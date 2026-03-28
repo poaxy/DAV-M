@@ -209,10 +209,47 @@ DAV_SESSION_DIR=~/.dav/sessions
     
     # Success message
     console.print("\n[bold green]✓ Setup complete![/bold green]\n")
+    _print_trust_summary_panels()
     console.print("You can now use Dav. Try running:")
     console.print("  [cyan]dav \"how do I check disk usage?\"[/cyan]\n")
     console.print("To edit your configuration later:")
     console.print(f"  [cyan]nano {env_file}[/cyan]\n")
+    console.print(
+        "[dim]Trust & data flows:[/dim] see [bold]docs/trust-and-data.md[/bold] in the Dav repository.\n"
+    )
+
+
+def _print_trust_summary_panels() -> None:
+    """Short post-setup transparency (doc 08)."""
+    from rich.panel import Panel
+
+    console.print(
+        Panel.fit(
+            "[bold]What is sent to the AI provider[/bold]\n"
+            "Your questions, session context (OS, paths, summary), and (when enabled) tool outputs—"
+            "redaction is applied on many paths. API keys stay in ~/.dav/.env.",
+            title="Privacy",
+            border_style="dim",
+        )
+    )
+    console.print(
+        Panel.fit(
+            "[bold]What stays local[/bold]\n"
+            "Configuration under ~/.dav/, session files, audit log (default ~/.dav/logs/dav_audit.jsonl).",
+            title="Local",
+            border_style="dim",
+        )
+    )
+    console.print(
+        Panel.fit(
+            "[bold]Next steps[/bold]\n"
+            "Review docs/trust-and-data.md for full detail. Use --execute only when you intend "
+            "to run shell or MCP tools; confirmations are on by default.",
+            title="Safety",
+            border_style="dim",
+        )
+    )
+    console.print()
 
 
 def run_root_installation() -> None:

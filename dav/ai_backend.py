@@ -566,6 +566,7 @@ def get_system_prompt(
     interactive_mode: bool = False,
     automation_mode: bool = False,
     log_mode: bool = False,
+    tool_calling: bool = False,
 ) -> str:
     """Get system prompt for Dav.
 
@@ -624,28 +625,40 @@ def get_system_prompt(
 You get their output.
 Analyze, then either emit another >>>EXEC<<< block or state 'Task complete. No further commands needed.'"""
 
+    TOOL_EXECUTION_RULES = """
+
+**Tools (function calling):**
+- `read_workspace_file`: pass a JSON object with `path` (file under workspace) to read text before suggesting edits.
+- `exec_shell`: pass `command`, optional `cwd`, optional `use_sudo` to run one shell command.
+- `mcp_invoke` (only if enabled): call trusted MCP servers via `server_id`, `tool_name`, optional `arguments` — requires user config (`DAV_MCP_ENABLED`, `mcp_trust.json`); treat as high risk.
+
+After tool results, analyze and call more tools if needed, or summarize completion.
+Do **not** use the >>>EXEC<<< marker when tools are enabled."""
+
     # ------------------------------------------------------------------
     # 3. Mode-specific sections
     # ------------------------------------------------------------------
+    exec_rules = TOOL_EXECUTION_RULES if tool_calling else EXECUTION_RULES
+
     if automation_mode:
-        return CORE_IDENTITY + EXECUTION_RULES + """
+        return CORE_IDENTITY + exec_rules + """
 
 **MODE: AUTOMATION (non-interactive)**
 - Commands run without confirmation. Group related actions. Handle errors and summarize what succeeded/failed.
 - Keep responses short and action-oriented (50–200 words)."""
 
     if execute_mode and interactive_mode:
-        return CORE_IDENTITY + EXECUTION_RULES + """
+        return CORE_IDENTITY + exec_rules + """
 
 **MODE: INTERACTIVE EXECUTE**
-- Multi-turn: discuss and execute. When the user asks you to **do** something, use the >>>EXEC<<< format.
+- Multi-turn: discuss and execute. When the user asks you to **do** something, use tools (or >>>EXEC<<< only if legacy mode).
 - Ask when ambiguous or risky. Be conversational but concise."""
 
     if execute_mode:
-        return CORE_IDENTITY + EXECUTION_RULES + """
+        return CORE_IDENTITY + exec_rules + """
 
 **MODE: EXECUTE (single query)**
-- When the user asks you to perform an action, use the >>>EXEC<<< format.
+- When the user asks you to perform an action, use the provided tools (or >>>EXEC<<< in legacy mode).
 - Keep explanations brief.
 - Skip execution only for clearly information-only requests ("what is X", "explain Y")."""
 
