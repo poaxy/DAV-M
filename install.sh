@@ -46,4 +46,6 @@ success "dav-ai installed"
 # ── 3. Run setup wizard ───────────────────────────────────────────────────────
 
 printf "\n"
-dav --setup
+# Redirect stdin from /dev/tty so the wizard can read keyboard input
+# even when this script was invoked via: curl ... | bash
+dav --setup < /dev/tty
