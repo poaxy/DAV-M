@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { marked, Lexer, type Token } from 'marked';
+import { Lexer, type Token } from 'marked';
 import { CodeBlock } from './CodeBlock.js';
+import { COLORS } from './theme.js';
 
 interface MarkdownRendererProps {
   /** Raw markdown string to render. */
@@ -13,9 +14,6 @@ interface MarkdownRendererProps {
  *
  * Handles: headings, paragraphs, code blocks (syntax-highlighted),
  * inline code, bold, italic, lists, blockquotes, horizontal rules.
- *
- * Walks the marked token tree so we get per-block control and can
- * delegate code blocks to CodeBlock (cli-highlight).
  */
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ text }) => {
   if (!text) return null;
@@ -32,16 +30,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ text }) => {
 
 const BlockToken: React.FC<{ token: Token }> = ({ token }) => {
   switch (token.type) {
+
     case 'heading': {
-      const depth = (token as { depth: number }).depth;
-      const rawText = (token as { text: string }).text;
-      const color = depth === 1 ? 'cyan' : depth === 2 ? 'green' : 'white';
-      const prefix = '#'.repeat(depth) + ' ';
+      const depth    = (token as { depth: number }).depth;
+      const rawText  = (token as { text: string }).text;
+      const color    = depth === 1 ? COLORS.heading1 : depth === 2 ? COLORS.heading2 : COLORS.heading3;
+      const marginTop = depth === 1 ? 1 : 0;
       return (
-        <Box marginTop={1}>
-          <Text color={color} bold>
-            {prefix}{rawText}
-          </Text>
+        <Box marginTop={marginTop} marginBottom={0}>
+          <Text color={color} bold>{rawText}</Text>
         </Box>
       );
     }
@@ -50,7 +47,7 @@ const BlockToken: React.FC<{ token: Token }> = ({ token }) => {
       const rawText = (token as { text: string }).text;
       return (
         <Box marginBottom={1}>
-          <Text wrap="wrap">{renderInlineMarkdown(rawText)}</Text>
+          <InlineText text={rawText} />
         </Box>
       );
     }
@@ -65,9 +62,11 @@ const BlockToken: React.FC<{ token: Token }> = ({ token }) => {
       return (
         <Box flexDirection="column" marginBottom={1}>
           {t.items.map((item, i) => (
-            <Box key={i}>
-              <Text color="cyan">{t.ordered ? `${i + 1}. ` : '• '}</Text>
-              <Text wrap="wrap">{renderInlineMarkdown(item.text)}</Text>
+            <Box key={i} gap={1} marginBottom={0}>
+              <Text color={COLORS.listBullet}>{t.ordered ? `${i + 1}.` : '•'}</Text>
+              <Box flexShrink={1}>
+                <InlineText text={item.text} />
+              </Box>
             </Box>
           ))}
         </Box>
@@ -95,7 +94,7 @@ const BlockToken: React.FC<{ token: Token }> = ({ token }) => {
     case 'hr': {
       return (
         <Box marginTop={1} marginBottom={1}>
-          <Text dimColor>{'─'.repeat(60)}</Text>
+          <Text dimColor>{'─'.repeat(40)}</Text>
         </Box>
       );
     }
@@ -105,30 +104,70 @@ const BlockToken: React.FC<{ token: Token }> = ({ token }) => {
     }
 
     default: {
-      // Fallback: render raw text if we don't recognise the token
       const rawText = (token as { raw?: string }).raw ?? '';
       if (!rawText.trim()) return null;
-      return <Text wrap="wrap">{rawText}</Text>;
+      return (
+        <Box marginBottom={1}>
+          <InlineText text={rawText} />
+        </Box>
+      );
     }
   }
 };
 
-/**
- * Convert inline markdown (bold, italic, inline code) to a plain ANSI string
- * for rendering inside <Text>. We do simple regex substitution — this is
- * intentionally lightweight since Ink's <Text> doesn't support nested JSX
- * inside a single Text node conveniently.
- */
-function renderInlineMarkdown(text: string): string {
-  return (
-    text
-      // Strip markdown control characters we can't render inline in Ink <Text>
-      // and replace with approximate equivalents
-      .replace(/\*\*(.+?)\*\*/g, '$1')   // bold → plain (Ink bold handled at component level)
-      .replace(/\*(.+?)\*/g, '$1')       // italic → plain
-      .replace(/__(.+?)__/g, '$1')       // bold alt
-      .replace(/_(.+?)_/g, '$1')         // italic alt
-      .replace(/`(.+?)`/g, '$1')         // inline code → plain
-      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // links → label only
-  );
+// ── Inline markdown renderer ──────────────────────────────────────────────────
+// Splits text on **bold**, *italic*, and `code` patterns and renders each
+// segment as a properly styled <Text> node.
+
+type Segment =
+  | { kind: 'text';   content: string }
+  | { kind: 'bold';   content: string }
+  | { kind: 'italic'; content: string }
+  | { kind: 'code';   content: string }
+  | { kind: 'link';   content: string };
+
+function parseInline(text: string): Segment[] {
+  const segments: Segment[] = [];
+  // Combined pattern — order matters: bold before italic
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_|`(.+?)`|\[(.+?)\]\(.+?\))/gs;
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) {
+      segments.push({ kind: 'text', content: text.slice(last, match.index) });
+    }
+    const full = match[1];
+    if (full.startsWith('**') || full.startsWith('__')) {
+      segments.push({ kind: 'bold',   content: match[2] ?? match[4] ?? '' });
+    } else if (full.startsWith('*') || full.startsWith('_')) {
+      segments.push({ kind: 'italic', content: match[3] ?? match[5] ?? '' });
+    } else if (full.startsWith('`')) {
+      segments.push({ kind: 'code',   content: match[6] ?? '' });
+    } else {
+      segments.push({ kind: 'link',   content: match[7] ?? '' });
+    }
+    last = match.index + full.length;
+  }
+
+  if (last < text.length) {
+    segments.push({ kind: 'text', content: text.slice(last) });
+  }
+  return segments;
 }
+
+const InlineText: React.FC<{ text: string }> = ({ text }) => {
+  const segments = parseInline(text);
+  return (
+    <Text wrap="wrap">
+      {segments.map((seg, i) => {
+        switch (seg.kind) {
+          case 'bold':   return <Text key={i} bold>{seg.content}</Text>;
+          case 'italic': return <Text key={i} italic>{seg.content}</Text>;
+          case 'code':   return <Text key={i} color={COLORS.inlineCode}>{seg.content}</Text>;
+          default:       return seg.content;
+        }
+      })}
+    </Text>
+  );
+};

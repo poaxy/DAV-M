@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { Spinner } from './Spinner.js';
+import { COLORS, TOOL_SYMBOLS, TOOL_LABELS } from './theme.js';
 
 export interface ToolCallState {
   id: string;
@@ -14,73 +15,65 @@ interface ToolCallViewProps {
   toolCall: ToolCallState;
 }
 
-const TOOL_ICONS: Record<string, string> = {
-  exec_shell: '$',
-  read_file: '📄',
-  write_file: '✎',
-  edit_file: '✎',
-  glob_search: '🔍',
-  grep_search: '🔍',
-};
-
-const TOOL_LABELS: Record<string, string> = {
-  exec_shell: 'Shell',
-  read_file: 'Read',
-  write_file: 'Write',
-  edit_file: 'Edit',
-  glob_search: 'Glob',
-  grep_search: 'Grep',
-};
-
 /**
- * Displays a single tool invocation — its status, primary argument,
- * and abbreviated output on completion.
+ * Displays a single tool invocation — status, label, primary arg, and output.
  */
 export const ToolCallView: React.FC<ToolCallViewProps> = ({ toolCall }) => {
   const { toolName, input, status, output } = toolCall;
 
-  const icon = TOOL_ICONS[toolName] ?? '⚙';
-  const label = TOOL_LABELS[toolName] ?? toolName;
-
-  // Pick the most meaningful argument to show inline
+  const symbol    = TOOL_SYMBOLS[toolName] ?? '○';
+  const label     = TOOL_LABELS[toolName]  ?? toolName;
   const primaryArg = getPrimaryArg(toolName, input);
 
-  const statusIcon =
-    status === 'running' ? null :
+  const statusMark =
     status === 'success' ? '✔' :
-    status === 'denied' ? '—' :
-    '✖';
+    status === 'denied'  ? '—' :
+    status === 'error'   ? '✖' : '';
 
   const statusColor =
-    status === 'running' ? 'cyan' :
-    status === 'success' ? 'green' :
-    status === 'denied' ? 'yellow' :
-    'red';
+    status === 'running' ? COLORS.toolRunning :
+    status === 'success' ? COLORS.toolSuccess :
+    status === 'denied'  ? COLORS.toolDenied  :
+    COLORS.toolError;
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {/* Tool call header */}
-      <Box>
-        {status === 'running' ? (
-          <Spinner text={`${label}  ${primaryArg}`} />
-        ) : (
-          <Text color={statusColor}>
-            {statusIcon} <Text color="white" bold>{label}</Text>
-            <Text dimColor>  {primaryArg}</Text>
-          </Text>
-        )}
-      </Box>
 
-      {/* Output summary on completion (truncated) */}
+      {/* Header row ── symbol  LABEL  path/arg */}
+      {status === 'running' ? (
+        <Box gap={1}>
+          <Spinner text="" />
+          <Text bold color={COLORS.toolLabel}>{label}</Text>
+          <Text dimColor>{primaryArg}</Text>
+        </Box>
+      ) : (
+        <Box gap={1}>
+          <Text color={statusColor}>{statusMark || symbol}</Text>
+          <Text bold color={COLORS.toolLabel}>{label}</Text>
+          <Text dimColor>{primaryArg}</Text>
+        </Box>
+      )}
+
+      {/* Output — left-bordered, truncated */}
       {output && status !== 'running' && (
-        <Box marginLeft={2} flexDirection="column">
+        <Box
+          marginLeft={2}
+          marginTop={0}
+          borderStyle="single"
+          borderLeft
+          borderRight={false}
+          borderTop={false}
+          borderBottom={false}
+          borderColor="gray"
+          paddingLeft={1}
+          flexDirection="column"
+        >
           {summarizeOutput(output).split('\n').map((line, i) => (
-            <Text key={i} dimColor wrap="truncate-end">
-              {line}
-            </Text>
+            <Text key={i} dimColor wrap="truncate-end">{line}</Text>
           ))}
         </Box>
       )}
+
     </Box>
   );
 };

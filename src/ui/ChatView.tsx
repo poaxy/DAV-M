@@ -45,7 +45,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const isExecuteMode = toolCalls !== undefined;
 
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={2} paddingTop={1}>
       {/* Completed conversation history */}
       {history.map((msg, i) => (
         <Message key={i} message={msg} />
@@ -58,11 +58,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <ToolCallView key={tc.id} toolCall={tc} />
           ))}
           {streamingText && phase === 'streaming' && (
-            <Box>
-              <Text wrap="wrap">
-                {streamingText}
-                <Text color="cyan">▋</Text>
-              </Text>
+            <Box flexDirection="column" marginBottom={1}>
+              <Text dimColor bold>dav</Text>
+              <Box
+                borderStyle="single"
+                borderLeft
+                borderRight={false}
+                borderTop={false}
+                borderBottom={false}
+                borderColor="blue"
+                paddingLeft={1}
+              >
+                <Text wrap="wrap">{streamingText}<Text color="cyan">▋</Text></Text>
+              </Box>
             </Box>
           )}
         </Box>

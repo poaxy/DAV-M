@@ -51,13 +51,41 @@ export const StreamingText: React.FC<StreamingTextProps> = ({ stream, onComplete
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (phase === 'done') {
-    return <MarkdownRenderer text={text} />;
+    // Wrap completed response in the same speech-bubble style as Message
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text dimColor bold>dav</Text>
+        <Box
+          borderStyle="single"
+          borderLeft
+          borderRight={false}
+          borderTop={false}
+          borderBottom={false}
+          borderColor="blue"
+          paddingLeft={1}
+          flexDirection="column"
+        >
+          <MarkdownRenderer text={text} />
+        </Box>
+      </Box>
+    );
   }
 
-  // While streaming: show raw text with a blinking cursor at the end
+  // While streaming: same speech-bubble, raw text + blinking cursor
   return (
-    <Box flexDirection="column">
-      <Text wrap="wrap">{text}<Text color="cyan">▋</Text></Text>
+    <Box flexDirection="column" marginBottom={1}>
+      <Text dimColor bold>dav</Text>
+      <Box
+        borderStyle="single"
+        borderLeft
+        borderRight={false}
+        borderTop={false}
+        borderBottom={false}
+        borderColor="blue"
+        paddingLeft={1}
+      >
+        <Text wrap="wrap">{text}<Text color="cyan">▋</Text></Text>
+      </Box>
     </Box>
   );
 };

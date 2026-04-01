@@ -24,12 +24,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       {langLabel && (
-        <Text backgroundColor="gray" color="white"> {langLabel} </Text>
+        <Box>
+          <Text dimColor bold> {langLabel} </Text>
+        </Box>
       )}
       <Box
-        paddingLeft={2}
-        paddingTop={0}
-        paddingBottom={0}
+        paddingLeft={1}
         borderStyle="single"
         borderLeft
         borderRight={false}
