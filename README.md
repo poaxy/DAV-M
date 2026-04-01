@@ -114,6 +114,17 @@ DAV-M supports the [Model Context Protocol](https://modelcontextprotocol.io). Ad
 
 ---
 
+## Uninstall
+
+```bash
+dav --uninstall        # removes ~/.dav/ (config, sessions, logs)
+npm uninstall -g dav-ai  # removes the dav command
+```
+
+`dav --uninstall` will ask for confirmation before deleting anything.
+
+---
+
 ## Audit Logs
 
 Every tool call is logged to `~/.local/share/dav/audit/audit-YYYY-MM-DD.jsonl`. Logs older than 30 days are pruned automatically.

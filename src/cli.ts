@@ -9,6 +9,7 @@ import {
   validateApiKey,
   ensureConfigDirs,
   runSetupWizard,
+  runUninstall,
   getEffectiveModel,
 } from './config/loader.js';
 import { buildInitialMessages, readStdin } from './context/builder.js';
@@ -47,6 +48,7 @@ export async function runCLI() {
     .option('--json', 'Output NDJSON — bypasses the TUI (useful for scripting / agents)')
     .option('--no-mcp', 'Disable MCP server connections for this invocation')
     .option('--setup', 'Run the first-time configuration wizard')
+    .option('--uninstall', 'Remove all DAV-M data and print the npm uninstall command')
     .option('--no-color', 'Disable color output (for CI / scripting)')
     .allowExcessArguments(false);
 
@@ -70,6 +72,12 @@ MCP:
     // ── Setup wizard ────────────────────────────────────────────────────────
     if (options.setup) {
       await runSetupWizard();
+      process.exit(EXIT.SUCCESS);
+    }
+
+    // ── Uninstall ────────────────────────────────────────────────────────────
+    if (options.uninstall) {
+      await runUninstall();
       process.exit(EXIT.SUCCESS);
     }
 

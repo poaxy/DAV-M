@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { config as loadDotenv } from 'dotenv';
@@ -248,4 +248,37 @@ export async function runSetupWizard(): Promise<void> {
     process.stdout.write(`  ${bold('Auto-confirm:')} ${autoConfirm ? 'enabled' : 'disabled'}\n`);
   }
   process.stdout.write('\n  Run ' + bold('dav') + ' to get started.\n\n');
+}
+
+/** Remove all DAV-M local data and print the npm uninstall command. */
+export async function runUninstall(): Promise<void> {
+  const { default: readline } = await import('readline');
+
+  const bold  = (s: string) => `\x1b[1m${s}\x1b[0m`;
+  const dim   = (s: string) => `\x1b[2m${s}\x1b[0m`;
+  const red   = (s: string) => `\x1b[31m${s}\x1b[0m`;
+  const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+
+  process.stdout.write('\n' + bold('  Uninstall DAV-M') + '\n\n');
+  process.stdout.write(`  This will permanently delete:\n`);
+  process.stdout.write(`    ${dim('•')} ${CONFIG_DIR}  ${dim('(config, sessions, audit logs)')}\n\n`);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const confirm = await new Promise<string>((res) => rl.question(`  Are you sure? ${dim('[y/N]')}: `, res));
+  rl.close();
+
+  if (confirm.trim().toLowerCase() !== 'y') {
+    process.stdout.write('\n  Cancelled.\n\n');
+    return;
+  }
+
+  if (existsSync(CONFIG_DIR)) {
+    rmSync(CONFIG_DIR, { recursive: true, force: true });
+    process.stdout.write('\n  ' + green('✓') + ` Removed ${CONFIG_DIR}\n`);
+  } else {
+    process.stdout.write(`\n  ${dim(`${CONFIG_DIR} not found — nothing to remove.`)}\n`);
+  }
+
+  process.stdout.write('\n  ' + bold('To remove the dav command, run:') + '\n\n');
+  process.stdout.write('    ' + red('npm uninstall -g dav-ai') + '\n\n');
 }
