@@ -105,62 +105,147 @@ export function ensureConfigDirs(config: DavConfig): void {
 export async function runSetupWizard(): Promise<void> {
   const { default: readline } = await import('readline');
 
+  // Hide typed input for secret fields
+  const { default: tty } = await import('tty');
+  const hiddenAsk = (prompt: string): Promise<string> =>
+    new Promise((resolve) => {
+      if (process.stdout.isTTY) process.stdout.write(prompt);
+      let value = '';
+      const stdin = process.stdin as NodeJS.ReadStream;
+      const wasPaused = stdin.isPaused();
+      if (wasPaused) stdin.resume();
+      stdin.setRawMode?.(true);
+      stdin.setEncoding('utf8');
+      const onData = (ch: string) => {
+        if (ch === '\r' || ch === '\n') {
+          stdin.setRawMode?.(false);
+          stdin.pause();
+          process.stdout.write('\n');
+          stdin.removeListener('data', onData);
+          resolve(value);
+        } else if (ch === '\u0003') {
+          process.exit(130); // Ctrl-C
+        } else if (ch === '\u007f') {
+          if (value.length > 0) value = value.slice(0, -1);
+        } else {
+          value += ch;
+        }
+      };
+      stdin.on('data', onData);
+    });
+
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const ask = (q: string): Promise<string> => new Promise((res) => rl.question(q, res));
+  const ask = (q: string, fallback = ''): Promise<string> =>
+    new Promise((res) => rl.question(q, (a) => res(a.trim() || fallback)));
 
-  console.log('\n  DAV Setup\n  ─────────\n');
-  console.log('  Configure your AI provider API key.\n');
+  const dim  = (s: string) => `\x1b[2m${s}\x1b[0m`;
+  const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+  const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+  const cyan  = (s: string) => `\x1b[36m${s}\x1b[0m`;
 
-  console.log('  Providers:');
-  console.log('    1) Anthropic  (claude-sonnet-4-6)');
-  console.log('    2) OpenAI     (gpt-4o)');
-  console.log('    3) Google     (gemini-2.5-flash)\n');
+  process.stdout.write('\n' + bold('  DAV-M Setup') + '\n');
+  process.stdout.write(dim('  ─────────────────────────────────────────\n'));
+  process.stdout.write(dim('  Configuration is saved to ~/.dav/.env\n\n'));
 
-  const choice = await ask('  Choose provider [1]: ');
-  const providerMap: Record<string, string> = { '1': 'anthropic', '2': 'openai', '3': 'google' };
-  const provider = providerMap[choice.trim() || '1'] ?? 'anthropic';
+  // ── 1. Provider ────────────────────────────────────────────────────────────
+  process.stdout.write('  ' + bold('Step 1: Choose your AI provider') + '\n\n');
+  process.stdout.write(`    ${bold('1)')} Anthropic  ${dim('claude-sonnet-4-6  (recommended)')}\n`);
+  process.stdout.write(`    ${bold('2)')} OpenAI     ${dim('gpt-4o')}\n`);
+  process.stdout.write(`    ${bold('3)')} Google     ${dim('gemini-2.5-flash')}\n\n`);
 
-  const envVarMap: Record<string, string> = {
+  const providerChoice = await ask(`  Choice ${dim('[1]')}: `, '1');
+  const providerMap: Record<string, Provider> = { '1': 'anthropic', '2': 'openai', '3': 'google' };
+  const provider: Provider = providerMap[providerChoice] ?? 'anthropic';
+  const defaultModel = DEFAULT_MODELS[provider];
+
+  process.stdout.write('\n');
+
+  // ── 2. API key ─────────────────────────────────────────────────────────────
+  const envVarMap: Record<Provider, string> = {
     anthropic: 'ANTHROPIC_API_KEY',
     openai: 'OPENAI_API_KEY',
     google: 'GOOGLE_GENERATIVE_AI_API_KEY',
   };
+  const keyUrlMap: Record<Provider, string> = {
+    anthropic: 'https://console.anthropic.com/',
+    openai: 'https://platform.openai.com/api-keys',
+    google: 'https://ai.google.dev/',
+  };
 
   const envVar = envVarMap[provider];
-  const apiKey = await ask(`  ${envVar}: `);
+  process.stdout.write('  ' + bold('Step 2: API Key') + '\n');
+  process.stdout.write(`  ${dim('Get yours at: ' + keyUrlMap[provider])}\n\n`);
+
+  rl.close(); // close before raw mode
+  const apiKey = await hiddenAsk(`  ${cyan(envVar)}: `);
 
   if (!apiKey.trim()) {
-    rl.close();
-    console.log('\n  Cancelled — no API key provided.\n');
+    process.stdout.write('\n  Cancelled — no API key provided.\n\n');
     return;
   }
 
-  rl.close();
+  // ── 3. Model override ──────────────────────────────────────────────────────
+  const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask2 = (q: string, fallback = ''): Promise<string> =>
+    new Promise((res) => rl2.question(q, (a) => res(a.trim() || fallback)));
 
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+  process.stdout.write('\n  ' + bold('Step 3: Default model') + '\n');
+  process.stdout.write(`  ${dim('Press Enter to use the default.')}\n\n`);
 
-  // Read existing .env if any
-  let existing = '';
-  if (existsSync(CONFIG_ENV)) {
-    existing = readFileSync(CONFIG_ENV, 'utf8');
-    // Remove old key lines
-    existing = existing
-      .split('\n')
-      .filter((l) => !l.startsWith(`${envVar}=`) && !l.startsWith('DAV_PROVIDER='))
-      .join('\n');
+  const modelInput = await ask2(`  Model ${dim(`[${defaultModel}]`)}: `, '');
+  const modelLine = modelInput ? `DAV_MODEL=${modelInput}` : '';
+
+  // ── 4. Execute mode ────────────────────────────────────────────────────────
+  process.stdout.write('\n  ' + bold('Step 4: Execution mode') + '\n');
+  process.stdout.write(`  ${dim('When enabled, dav can run shell commands (always with your confirmation).')}\n\n`);
+
+  const execChoice = await ask2(`  Enable execute mode? ${dim('[y/N]')}: `, 'n');
+  const allowExecute = execChoice.toLowerCase() === 'y';
+
+  // ── 5. Auto-confirm ────────────────────────────────────────────────────────
+  let autoConfirm = false;
+  if (allowExecute) {
+    process.stdout.write('\n  ' + bold('Step 5: Auto-confirm') + '\n');
+    process.stdout.write(`  ${dim('Skip confirmation prompts for every tool call (not recommended).')}\n\n`);
+    const autoChoice = await ask2(`  Enable auto-confirm? ${dim('[y/N]')}: `, 'n');
+    autoConfirm = autoChoice.toLowerCase() === 'y';
   }
 
-  const newContent = [
-    existing.trim(),
+  rl2.close();
+
+  // ── Write ~/.dav/.env ──────────────────────────────────────────────────────
+  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+
+  const keysToStrip = [envVar, 'DAV_PROVIDER', 'DAV_MODEL', 'DAV_ALLOW_EXECUTE', 'DAV_AUTO_CONFIRM'];
+  let existing = '';
+  if (existsSync(CONFIG_ENV)) {
+    existing = readFileSync(CONFIG_ENV, 'utf8')
+      .split('\n')
+      .filter((l) => !keysToStrip.some((k) => l.startsWith(`${k}=`)))
+      .join('\n')
+      .trim();
+  }
+
+  const lines = [
+    existing,
     `DAV_PROVIDER=${provider}`,
     `${envVar}=${apiKey.trim()}`,
+    modelLine,
+    allowExecute ? 'DAV_ALLOW_EXECUTE=1' : '',
+    autoConfirm  ? 'DAV_AUTO_CONFIRM=1'  : '',
     '',
-  ]
-    .filter((l, i) => i === 0 || l !== '')
-    .join('\n');
+  ].filter((l, i) => i === 0 || l !== '');
 
-  writeFileSync(CONFIG_ENV, newContent, { mode: 0o600 });
+  writeFileSync(CONFIG_ENV, lines.join('\n'), { mode: 0o600 });
 
-  console.log(`\n  Saved to ${CONFIG_ENV}\n`);
-  console.log(`  You're all set! Try: dav "hello"\n`);
+  // ── Done ───────────────────────────────────────────────────────────────────
+  process.stdout.write('\n' + dim('  ─────────────────────────────────────────\n'));
+  process.stdout.write('  ' + green('✓') + ' ' + bold(`Saved to ${CONFIG_ENV}`) + '\n\n');
+  process.stdout.write(`  ${bold('Provider:')}      ${provider}\n`);
+  process.stdout.write(`  ${bold('Model:')}         ${modelInput || defaultModel}\n`);
+  process.stdout.write(`  ${bold('Execute mode:')}  ${allowExecute ? 'enabled' : 'disabled'}\n`);
+  if (allowExecute) {
+    process.stdout.write(`  ${bold('Auto-confirm:')} ${autoConfirm ? 'enabled' : 'disabled'}\n`);
+  }
+  process.stdout.write('\n  Run ' + bold('dav') + ' to get started.\n\n');
 }
