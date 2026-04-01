@@ -20,7 +20,9 @@ import { loadMCPConfig } from './mcp/config.js';
 import { connectMCPServers } from './mcp/client.js';
 import { AuditLogger, pruneOldLogs, setCliVersion } from './audit/logger.js';
 
-export const VERSION = '1.0.0';
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+export const VERSION: string = (_require('../package.json') as { version: string }).version;
 
 setCliVersion(VERSION);
 

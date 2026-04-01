@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { Message, type MessageData } from './Message.js';
 import { Spinner } from './Spinner.js';
-import { StreamingText } from './StreamingText.js';
 import { ToolCallView, type ToolCallState } from './ToolCallView.js';
 import { InputBar } from './InputBar.js';
 
@@ -11,17 +10,13 @@ interface ChatViewProps {
   history: MessageData[];
   /** Phase of the current turn. */
   phase: 'thinking' | 'streaming' | 'idle';
-  // ── Non-execute mode ──────────────────────────────────────────────────────
-  /** Live stream of text deltas from simple streamResponse() */
-  stream?: AsyncGenerator<string>;
-  onStreamComplete?: (text: string) => void;
-  onStreamError?: (err: Error) => void;
-  // ── Execute mode ──────────────────────────────────────────────────────────
-  /** All tool invocations for the current agent run. */
+  /** Tool invocations (execute mode only — undefined in stream mode). */
   toolCalls?: ToolCallState[];
-  /** Streaming text between or after tool calls. */
+  /**
+   * Live streaming text for the current turn.
+   * Used in both execute mode (between tool calls) and stream mode.
+   */
   streamingText?: string;
-  // ── Interactive mode ──────────────────────────────────────────────────────
   /** True when running as dav -i. Shows InputBar when idle. */
   isInteractive?: boolean;
   /** Whether the InputBar should capture keyboard input. */
@@ -33,9 +28,6 @@ interface ChatViewProps {
 export const ChatView: React.FC<ChatViewProps> = ({
   history,
   phase,
-  stream,
-  onStreamComplete,
-  onStreamError,
   toolCalls,
   streamingText,
   isInteractive,
@@ -44,62 +36,61 @@ export const ChatView: React.FC<ChatViewProps> = ({
 }) => {
   const isExecuteMode = toolCalls !== undefined;
 
+  // Live speech bubble — shown during streaming in both modes
+  const streamingBubble = streamingText && phase === 'streaming' ? (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text dimColor bold>dav</Text>
+      <Box
+        borderStyle="single"
+        borderLeft
+        borderRight={false}
+        borderTop={false}
+        borderBottom={false}
+        borderColor="blue"
+        paddingLeft={1}
+      >
+        <Text wrap="wrap">{streamingText}<Text color="cyan">▋</Text></Text>
+      </Box>
+    </Box>
+  ) : null;
+
   return (
     <Box flexDirection="column" paddingX={2} paddingTop={1}>
+
       {/* Completed conversation history */}
       {history.map((msg, i) => (
         <Message key={i} message={msg} />
       ))}
 
-      {/* Execute mode: tool calls + inline streaming text */}
+      {/* Execute mode: tool calls then streaming text */}
       {isExecuteMode && (
         <Box flexDirection="column">
-          {toolCalls!.map((tc) => (
+          {toolCalls.map((tc) => (
             <ToolCallView key={tc.id} toolCall={tc} />
           ))}
-          {streamingText && phase === 'streaming' && (
-            <Box flexDirection="column" marginBottom={1}>
-              <Text dimColor bold>dav</Text>
-              <Box
-                borderStyle="single"
-                borderLeft
-                borderRight={false}
-                borderTop={false}
-                borderBottom={false}
-                borderColor="blue"
-                paddingLeft={1}
-              >
-                <Text wrap="wrap">{streamingText}<Text color="cyan">▋</Text></Text>
-              </Box>
-            </Box>
-          )}
+          {streamingBubble}
         </Box>
       )}
 
-      {/* Non-execute mode: spinner or stream */}
+      {/* Stream mode: spinner or live bubble */}
       {!isExecuteMode && (
         <>
           {phase === 'thinking' && <Spinner text="Thinking" />}
-          {phase === 'streaming' && stream && onStreamComplete && onStreamError && (
-            <StreamingText
-              stream={stream}
-              onComplete={onStreamComplete}
-              onError={onStreamError}
-            />
-          )}
+          {streamingBubble}
         </>
       )}
 
-      {/* Execute mode thinking indicator (before first event) */}
+      {/* Execute mode thinking indicator (before first tool call) */}
       {isExecuteMode && phase === 'thinking' && <Spinner text="Thinking" />}
 
-      {/* Interactive mode input bar — shown when idle/waiting for input */}
+      {/* Interactive input bar */}
       {isInteractive && phase === 'idle' && onInputSubmit && (
         <InputBar
           isActive={inputActive ?? false}
           onSubmit={onInputSubmit}
         />
       )}
+
     </Box>
   );
 };

@@ -4,6 +4,7 @@ import { ChatView } from './ChatView.js';
 import { StatusBar } from './StatusBar.js';
 import { ConfirmPrompt } from './ConfirmPrompt.js';
 import { streamResponse, type CoreMessage } from '../ai/backend.js';
+// StreamingText and stream state removed — App.tsx is now the sole generator consumer
 import { buildSystemPrompt } from '../ai/system-prompt.js';
 import { buildUserMessage } from '../context/builder.js';
 import { runWithFailover } from '../agent/failover.js';
@@ -85,10 +86,8 @@ export const App: React.FC<AppProps> = ({
   const [history, setHistory] = useState<MessageData[]>([{ role: 'user', content: query }]);
   // Tool calls for the current active turn (execute mode)
   const [toolCalls, setToolCalls] = useState<ToolCallState[]>([]);
-  // Streaming text accumulator for the current turn
+  // Streaming text accumulator for the current turn (both execute and stream modes)
   const [streamingText, setStreamingText] = useState('');
-  // Non-execute streaming generator
-  const [stream, setStream] = useState<AsyncGenerator<string> | null>(null);
 
   const [phase, setPhase] = useState<AppPhase>(
     interactiveMode ? 'thinking' : 'thinking',
@@ -362,7 +361,6 @@ export const App: React.FC<AppProps> = ({
     async (messages: CoreMessage[], currentConfig: DavConfig): Promise<string> => {
       const trimmed = contextTracker.current.trimMessages(messages, currentConfig.provider);
 
-      // Try primary provider; on failover-eligible error, try the next
       const providers: Provider[] = ['anthropic', 'openai', 'google'];
       const tried = new Set<Provider>();
       let cfg = currentConfig;
@@ -370,16 +368,16 @@ export const App: React.FC<AppProps> = ({
       while (true) {
         tried.add(cfg.provider);
         try {
-          const gen = streamResponse(trimmed, cfg, systemPrompt);
-          setStream(gen);
           setPhase('streaming');
+          let accumulated = '';
 
-          // Drain the generator and return accumulated text
-          const chunks: string[] = [];
-          for await (const delta of gen) {
-            chunks.push(delta);
+          // Sole consumer of the generator — updates streamingText on every chunk
+          for await (const delta of streamResponse(trimmed, cfg, systemPrompt)) {
+            accumulated += delta;
+            setStreamingText(accumulated);
           }
-          return chunks.join('');
+
+          return accumulated;
         } catch (err) {
           const { isFailoverError } = await import('../utils/errors.js');
           if (!isFailoverError(err)) throw err;
@@ -409,7 +407,6 @@ export const App: React.FC<AppProps> = ({
       setPhase('thinking');
       setStreamingText('');
       setToolCalls([]);
-      setStream(null);
 
       // Add user message to the display history for this turn
       setHistory((h) => {
@@ -467,8 +464,8 @@ export const App: React.FC<AppProps> = ({
           // Stream mode
           const fullText = await runStreamTurn(messages, config);
 
+          setStreamingText('');
           setHistory((h) => [...h, { role: 'assistant', content: fullText }]);
-          setStream(null);
 
           const aiMsg: CoreMessage = { role: 'assistant', content: fullText };
           const newMessages = [...messages, aiMsg];
@@ -591,21 +588,8 @@ export const App: React.FC<AppProps> = ({
           <ChatView
             history={flatHistory}
             phase={chatPhase}
-            stream={!executeMode ? (stream ?? undefined) : undefined}
-            onStreamComplete={(text) => {
-              setHistory((h) => [...h, { role: 'assistant', content: text }]);
-              if (!interactiveMode) {
-                setPhase('done');
-                setTimeout(() => exit(), 50);
-              }
-            }}
-            onStreamError={(err) => {
-              setErrorMessage(err.message);
-              setPhase('error');
-              if (!interactiveMode) setTimeout(() => exit(err), 50);
-            }}
             toolCalls={executeMode ? toolCalls : undefined}
-            streamingText={executeMode ? streamingText : undefined}
+            streamingText={streamingText}
             isInteractive={interactiveMode}
             inputActive={phase === 'input'}
             onInputSubmit={handleInteractiveSubmit}
