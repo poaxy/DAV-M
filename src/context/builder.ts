@@ -1,5 +1,3 @@
-import { getSystemInfo, formatSystemInfo } from './system-info.js';
-import { getWorkspaceContext, formatWorkspaceContext } from './workspace.js';
 import type { CoreMessage } from '../ai/backend.js';
 
 const MAX_STDIN_CHARS = 40_000;
@@ -7,38 +5,27 @@ const MAX_STDIN_CHARS = 40_000;
 export interface BuiltContext {
   /** The full user message to send as the first human turn. */
   userMessage: string;
-  /** Formatted context string (for debugging / display). */
-  contextSummary: string;
 }
 
 /**
- * Build the user message that combines system context + optional stdin + the query.
+ * Build the user message.
+ *
+ * Environment context (OS, shell, cwd, git) lives in the system prompt, not here.
+ * This function handles only: optional piped stdin + the user's query.
  */
 export function buildUserMessage(query: string, stdinContent: string | null): BuiltContext {
-  const sysInfo = getSystemInfo();
-  const workspace = getWorkspaceContext();
-
-  const contextParts: string[] = [];
-  contextParts.push(`<system_info>${formatSystemInfo(sysInfo)}</system_info>`);
-  contextParts.push(`<workspace>\n${formatWorkspaceContext(workspace)}\n</workspace>`);
-
-  if (stdinContent) {
-    const truncated =
-      stdinContent.length > MAX_STDIN_CHARS
-        ? stdinContent.slice(0, MAX_STDIN_CHARS) + `\n... [truncated — ${stdinContent.length - MAX_STDIN_CHARS} chars omitted]`
-        : stdinContent;
-    contextParts.push(`<stdin_input>\n${truncated}\n</stdin_input>`);
+  if (!stdinContent) {
+    return { userMessage: query };
   }
 
-  const contextBlock = contextParts.join('\n');
-  const userMessage = `${contextBlock}\n\n${query}`;
+  const truncated =
+    stdinContent.length > MAX_STDIN_CHARS
+      ? stdinContent.slice(0, MAX_STDIN_CHARS) +
+        `\n... [truncated — ${stdinContent.length - MAX_STDIN_CHARS} chars omitted]`
+      : stdinContent;
 
-  const contextSummary = [
-    formatSystemInfo(sysInfo),
-    formatWorkspaceContext(workspace),
-  ].join('\n');
-
-  return { userMessage, contextSummary };
+  const userMessage = `<piped_input>\n${truncated}\n</piped_input>\n\n${query}`;
+  return { userMessage };
 }
 
 /** Read stdin content if stdin is not a TTY (i.e. something was piped in). */
