@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # DAV-M installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/poaxy/DAV-M/main/install.sh | bash
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/poaxy/DAV-M/main/install.sh)
 
 BOLD="\033[1m"
 DIM="\033[2m"
@@ -46,6 +46,18 @@ success "dav-ai installed"
 # ── 3. Run setup wizard ───────────────────────────────────────────────────────
 
 printf "\n"
-# Redirect stdin from /dev/tty so the wizard can read keyboard input
-# even when this script was invoked via: curl ... | bash
-dav --setup < /dev/tty
+# Run the setup wizard.
+# NOTE: use bash <(curl ...) not curl | bash — piping replaces stdin with the
+# download stream, which causes interactive prompts to exit immediately.
+if [ -t 0 ]; then
+  dav --setup
+else
+  # Fallback: stdin is not a terminal (someone used curl | bash anyway).
+  # Try /dev/tty; if that fails too, just tell the user to run setup manually.
+  if [ -e /dev/tty ]; then
+    dav --setup </dev/tty >/dev/tty
+  else
+    printf "\n  ${BOLD}Installation complete!${RESET}\n"
+    printf "  Run ${BOLD}dav --setup${RESET} to finish configuration.\n\n"
+  fi
+fi
