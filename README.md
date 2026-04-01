@@ -4,9 +4,8 @@
 
 Built with TypeScript, React/Ink, and the Vercel AI SDK. Supports Anthropic, OpenAI, and Google Gemini — plus any tool server via the Model Context Protocol (MCP).
 
-```
-npm install -g dav-ai
-dav
+```bash
+curl -fsSL https://raw.githubusercontent.com/poaxy/DAV-M/main/install.sh | bash
 ```
 
 ---
@@ -37,19 +36,19 @@ dav
 
 ## Install
 
+**One-liner (recommended):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/poaxy/DAV-M/main/install.sh | bash
+```
+
+This checks your Node.js version, installs `dav-ai` globally, and walks you through saving your API key to your shell profile.
+
+**Manual install:**
+
 ```bash
 npm install -g dav-ai
-```
-
-Set your API key in your shell profile or a `.env` file in your working directory:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Then run:
-
-```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY
 dav
 ```
 
