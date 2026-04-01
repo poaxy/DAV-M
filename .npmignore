@@ -1,0 +1,22 @@
+# Source — only dist/ ships (controlled via "files" in package.json)
+src/
+*.ts
+!dist/**/*.d.ts
+
+# Build tooling
+tsconfig*.json
+tsdown.config.ts
+vitest.config.*
+
+# Development / CI
+.env*
+.vscode/
+.idea/
+coverage/
+*.log
+
+# Tests
+tests/
+__tests__/
+*.test.*
+*.spec.*

@@ -1,89 +1,30 @@
-# Local working materials (documents, notes, learnings — not committed)
+# Local working materials
 local/
 
-# Cursor / editor agent state (not source)
+# Cursor / editor
 .cursor/
-.cursor/**
 
-# Project mistakes log (local only; see user workflow)
-mistakes
-mistakes.txt
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
+# Node.js
+node_modules/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
+*.js.map
+coverage/
 
 # Environment and secrets
 .env
 .env.*
 !.env.example
-secrets/
-*.key
-id_rsa
-id_ed25519
 
 # IDE / OS
 .idea/
 .vscode/
 *.swp
-*.swo
 *~
 .DS_Store
 **/.DS_Store
-Thumbs.db
-Desktop.ini
 
-# Testing / coverage
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-*.cover
-.hypothesis/
-.tox/
-.nox/
-.mypy_cache/
-.ruff_cache/
-.pytype/
-
-# Logs and temp files
+# Logs
 *.log
 logs/
 tmp/
 temp/
-scratch/
-
-# Packaging / build artifacts
-*.manifest
-*.spec
-
-# Jupyter (if used for experiments)
-.ipynb_checkpoints/
