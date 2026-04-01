@@ -1,57 +1,146 @@
-# DAV MAX (Dav-M)
+# DAV-M
 
-**DAV MAX** is a terminal AI assistant for **Linux and macOS**. It runs as the `dav` command: you ask in plain language, it uses your machine context (directory, OS, optional stdin), and it can run shell commands **only when you confirm**—so you stay in control.
+**DAV-M** is a terminal AI assistant for **macOS and Linux**. Run it as `dav` — describe what you want in plain language and it executes tasks using your machine context with interactive confirmation before any file or shell operation.
 
-Repository: [github.com/poaxy/DAV-M](https://github.com/poaxy/DAV-M) · Python package name: `dav-ai`
+Built with TypeScript, React/Ink, and the Vercel AI SDK. Supports Anthropic, OpenAI, and Google Gemini — plus any tool server via the Model Context Protocol (MCP).
+
+```
+npm install -g dav-ai
+dav
+```
+
+---
+
+## Features
+
+- **Interactive TUI** — full terminal UI powered by Ink/React with syntax-highlighted output
+- **Multi-provider** — Anthropic Claude, OpenAI GPT, Google Gemini; switch with `--model`
+- **Agentic tool use** — reads files, edits files, runs shell commands, searches the web
+- **Diff preview** — shows a unified diff before any file edit or write
+- **MCP support** — connect any MCP server via `.mcp.json` config
+- **Audit logging** — JSONL logs of every tool call, rotated daily to `~/.local/share/dav/audit/`
+- **Session history** — conversations are saved and resumable
+- **`--json` mode** — NDJSON output for scripting and pipelines
+- **`--no-color`** — plain text output for terminals that don't support color
+
+---
+
+## Requirements
+
+- Node.js 20+
+- An API key from at least one provider:
+  - [Anthropic](https://console.anthropic.com/) — `ANTHROPIC_API_KEY`
+  - [OpenAI](https://platform.openai.com/api-keys) — `OPENAI_API_KEY`
+  - [Google Gemini](https://ai.google.dev/) — `GOOGLE_GENERATIVE_AI_API_KEY`
 
 ---
 
 ## Install
 
-**Requirements:** Python 3.8+, an API key from [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/), or [Google Gemini](https://ai.google.dev/).
-
-**Install (pick one):**
-
 ```bash
-pipx install git+https://github.com/poaxy/DAV-M.git
+npm install -g dav-ai
 ```
 
+Set your API key in your shell profile or a `.env` file in your working directory:
+
 ```bash
-pip install --user git+https://github.com/poaxy/DAV-M.git
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install git+https://github.com/poaxy/DAV-M.git
-```
-
-**First run** — creates `~/.dav/` and walks through API keys:
+Then run:
 
 ```bash
-dav --setup
-```
-
-Check:
-
-```bash
-dav --version
+dav
 ```
 
 ---
 
-## Use cases
+## Usage
 
-| Use case | Example |
-|----------|---------|
-| Ask how to do something (no commands run) | `dav "how do I list open ports?"` |
-| Run suggested commands with confirmation | `dav "show disk usage of /home" --execute` |
-| Interactive session | `dav -i` |
-| Pipe logs for analysis | `cat /var/log/syslog \| dav -log "summarize errors"` |
+```
+dav [options] [prompt]
+```
 
-For privacy, audit logs, and optional enterprise settings, see **[docs/trust-and-data.md](docs/trust-and-data.md)** and **[docs/README.md](docs/README.md)**.
+| Option | Description |
+|--------|-------------|
+| `--model <model>` | Model to use (e.g. `claude-sonnet-4-5`, `gpt-4o`, `gemini-2.0-flash`) |
+| `--no-color` | Disable color output |
+| `--json` | NDJSON output mode for scripting |
+| `--no-mcp` | Skip MCP server connections |
+| `--version` | Print version |
+| `--help` | Show help |
+
+**Examples:**
+
+```bash
+# Interactive session
+dav
+
+# One-shot prompt
+dav "summarize the git log from the last week"
+
+# Pipe input
+cat error.log | dav "what is causing these errors?"
+
+# Use a specific model
+dav --model gpt-4o "refactor this file to use async/await"
+
+# JSON output for scripting
+dav --json "list all TODO comments in this repo" | jq .
+```
+
+---
+
+## MCP Servers
+
+DAV-M supports the [Model Context Protocol](https://modelcontextprotocol.io). Add servers to `.mcp.json` in your project or `~/.config/dav/mcp.json` globally:
+
+```json
+{
+  "servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Audit Logs
+
+Every tool call is logged to `~/.local/share/dav/audit/audit-YYYY-MM-DD.jsonl`. Logs older than 30 days are pruned automatically.
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Error |
+| `2` | Cancelled by user |
+| `3` | Usage error |
+| `4` | Auth error (missing API key) |
+| `5` | Timeout |
+| `130` | Interrupted (Ctrl-C) |
+
+---
+
+## Repository
+
+[github.com/poaxy/DAV-M](https://github.com/poaxy/DAV-M)
 
 ---
 
 ## License
 
-MIT.
+MIT
