@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { config as loadDotenv } from 'dotenv';
+import { intro, outro, select, text, password, confirm, spinner, isCancel, cancel, note } from '@clack/prompts';
 import { ConfigError } from '../utils/errors.js';
 import type { DavConfig, Provider } from './types.js';
 import { DEFAULT_MODELS } from './types.js';
@@ -101,66 +102,34 @@ export function ensureConfigDirs(config: DavConfig): void {
   }
 }
 
+/** Validate an API key against the provider's API. Returns error string or null if valid. */
+async function validateKey(provider: Provider, key: string): Promise<string | null> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let url: string;
+
+    if (provider === 'anthropic') {
+      url = 'https://api.anthropic.com/v1/models';
+      headers['x-api-key'] = key;
+      headers['anthropic-version'] = '2023-06-01';
+    } else if (provider === 'openai') {
+      url = 'https://api.openai.com/v1/models';
+      headers['Authorization'] = `Bearer ${key}`;
+    } else {
+      url = `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`;
+    }
+
+    const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(8000) });
+    if (res.status === 401 || res.status === 403) return 'Invalid API key — authentication failed.';
+    if (!res.ok) return `Unexpected response (${res.status}) — key may still work, continuing.`;
+    return null;
+  } catch {
+    return null; // network error — don't block setup
+  }
+}
+
 /** Interactive first-time setup wizard (writes to ~/.dav/.env). */
 export async function runSetupWizard(): Promise<void> {
-  const { default: readline } = await import('readline');
-
-  // Hide typed input for secret fields
-  const { default: tty } = await import('tty');
-  const hiddenAsk = (prompt: string): Promise<string> =>
-    new Promise((resolve) => {
-      if (process.stdout.isTTY) process.stdout.write(prompt);
-      let value = '';
-      const stdin = process.stdin as NodeJS.ReadStream;
-      const wasPaused = stdin.isPaused();
-      if (wasPaused) stdin.resume();
-      stdin.setRawMode?.(true);
-      stdin.setEncoding('utf8');
-      const onData = (ch: string) => {
-        if (ch === '\r' || ch === '\n') {
-          stdin.setRawMode?.(false);
-          stdin.pause();
-          process.stdout.write('\n');
-          stdin.removeListener('data', onData);
-          resolve(value);
-        } else if (ch === '\u0003') {
-          process.exit(130); // Ctrl-C
-        } else if (ch === '\u007f') {
-          if (value.length > 0) value = value.slice(0, -1);
-        } else {
-          value += ch;
-        }
-      };
-      stdin.on('data', onData);
-    });
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const ask = (q: string, fallback = ''): Promise<string> =>
-    new Promise((res) => rl.question(q, (a) => res(a.trim() || fallback)));
-
-  const dim  = (s: string) => `\x1b[2m${s}\x1b[0m`;
-  const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
-  const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-  const cyan  = (s: string) => `\x1b[36m${s}\x1b[0m`;
-
-  process.stdout.write('\n' + bold('  DAV-M Setup') + '\n');
-  process.stdout.write(dim('  ─────────────────────────────────────────\n'));
-  process.stdout.write(dim('  Configuration is saved to ~/.dav/.env\n\n'));
-
-  // ── 1. Provider ────────────────────────────────────────────────────────────
-  process.stdout.write('  ' + bold('Step 1: Choose your AI provider') + '\n\n');
-  process.stdout.write(`    ${bold('1)')} Anthropic  ${dim('claude-sonnet-4-6  (recommended)')}\n`);
-  process.stdout.write(`    ${bold('2)')} OpenAI     ${dim('gpt-4o')}\n`);
-  process.stdout.write(`    ${bold('3)')} Google     ${dim('gemini-2.5-flash')}\n\n`);
-
-  const providerChoice = await ask(`  Choice ${dim('[1]')}: `, '1');
-  const providerMap: Record<string, Provider> = { '1': 'anthropic', '2': 'openai', '3': 'google' };
-  const provider: Provider = providerMap[providerChoice] ?? 'anthropic';
-  const defaultModel = DEFAULT_MODELS[provider];
-
-  process.stdout.write('\n');
-
-  // ── 2. API key ─────────────────────────────────────────────────────────────
   const envVarMap: Record<Provider, string> = {
     anthropic: 'ANTHROPIC_API_KEY',
     openai: 'OPENAI_API_KEY',
@@ -169,49 +138,74 @@ export async function runSetupWizard(): Promise<void> {
   const keyUrlMap: Record<Provider, string> = {
     anthropic: 'https://console.anthropic.com/',
     openai: 'https://platform.openai.com/api-keys',
-    google: 'https://ai.google.dev/',
+    google: 'https://aistudio.google.com/app/apikey',
   };
 
+  intro('DAV-M Setup');
+
+  // ── 1. Provider ────────────────────────────────────────────────────────────
+  const providerResult = await select<Provider>({
+    message: 'Choose your AI provider',
+    options: [
+      { value: 'anthropic', label: 'Anthropic', hint: `claude-sonnet-4-6  (recommended)` },
+      { value: 'openai',    label: 'OpenAI',    hint: 'gpt-4o' },
+      { value: 'google',    label: 'Google',    hint: 'gemini-2.5-flash' },
+    ],
+  });
+  if (isCancel(providerResult)) { cancel('Setup cancelled.'); return; }
+  const provider = providerResult as Provider;
+  const defaultModel = DEFAULT_MODELS[provider];
   const envVar = envVarMap[provider];
-  process.stdout.write('  ' + bold('Step 2: API Key') + '\n');
-  process.stdout.write(`  ${dim('Get yours at: ' + keyUrlMap[provider])}\n\n`);
 
-  rl.close(); // close before raw mode
-  const apiKey = await hiddenAsk(`  ${cyan(envVar)}: `);
+  note(`Get your key at: ${keyUrlMap[provider]}`, 'API Key');
 
-  if (!apiKey.trim()) {
-    process.stdout.write('\n  Cancelled — no API key provided.\n\n');
-    return;
+  // ── 2. API key ─────────────────────────────────────────────────────────────
+  const apiKeyResult = await password({
+    message: envVar,
+    mask: '▪',
+    validate: (v) => !v || v.trim().length < 10 ? 'Key looks too short — paste the full key.' : undefined,
+  });
+  if (isCancel(apiKeyResult)) { cancel('Setup cancelled.'); return; }
+  const apiKey = (apiKeyResult as string).trim();
+
+  // ── Validate key ───────────────────────────────────────────────────────────
+  const s = spinner();
+  s.start('Validating API key...');
+  const keyError = await validateKey(provider, apiKey);
+  if (keyError) {
+    s.stop(`⚠ ${keyError}`);
+  } else {
+    s.stop('API key is valid');
   }
 
   // ── 3. Model override ──────────────────────────────────────────────────────
-  const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const ask2 = (q: string, fallback = ''): Promise<string> =>
-    new Promise((res) => rl2.question(q, (a) => res(a.trim() || fallback)));
-
-  process.stdout.write('\n  ' + bold('Step 3: Default model') + '\n');
-  process.stdout.write(`  ${dim('Press Enter to use the default.')}\n\n`);
-
-  const modelInput = await ask2(`  Model ${dim(`[${defaultModel}]`)}: `, '');
-  const modelLine = modelInput ? `DAV_MODEL=${modelInput}` : '';
+  const modelResult = await text({
+    message: 'Default model',
+    placeholder: defaultModel,
+    defaultValue: '',
+    validate: () => undefined,
+  });
+  if (isCancel(modelResult)) { cancel('Setup cancelled.'); return; }
+  const modelInput = (modelResult as string).trim();
 
   // ── 4. Execute mode ────────────────────────────────────────────────────────
-  process.stdout.write('\n  ' + bold('Step 4: Execution mode') + '\n');
-  process.stdout.write(`  ${dim('When enabled, dav can run shell commands (always with your confirmation).')}\n\n`);
-
-  const execChoice = await ask2(`  Enable execute mode? ${dim('[y/N]')}: `, 'n');
-  const allowExecute = execChoice.toLowerCase() === 'y';
+  const execResult = await confirm({
+    message: 'Enable execute mode? (lets dav run shell commands, always with your confirmation)',
+    initialValue: false,
+  });
+  if (isCancel(execResult)) { cancel('Setup cancelled.'); return; }
+  const allowExecute = execResult as boolean;
 
   // ── 5. Auto-confirm ────────────────────────────────────────────────────────
   let autoConfirm = false;
   if (allowExecute) {
-    process.stdout.write('\n  ' + bold('Step 5: Auto-confirm') + '\n');
-    process.stdout.write(`  ${dim('Skip confirmation prompts for every tool call (not recommended).')}\n\n`);
-    const autoChoice = await ask2(`  Enable auto-confirm? ${dim('[y/N]')}: `, 'n');
-    autoConfirm = autoChoice.toLowerCase() === 'y';
+    const autoResult = await confirm({
+      message: 'Enable auto-confirm? (skips confirmation prompts — not recommended)',
+      initialValue: false,
+    });
+    if (isCancel(autoResult)) { cancel('Setup cancelled.'); return; }
+    autoConfirm = autoResult as boolean;
   }
-
-  rl2.close();
 
   // ── Write ~/.dav/.env ──────────────────────────────────────────────────────
   if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
@@ -229,8 +223,8 @@ export async function runSetupWizard(): Promise<void> {
   const lines = [
     existing,
     `DAV_PROVIDER=${provider}`,
-    `${envVar}=${apiKey.trim()}`,
-    modelLine,
+    `${envVar}=${apiKey}`,
+    modelInput ? `DAV_MODEL=${modelInput}` : '',
     allowExecute ? 'DAV_ALLOW_EXECUTE=1' : '',
     autoConfirm  ? 'DAV_AUTO_CONFIRM=1'  : '',
     '',
@@ -239,46 +233,33 @@ export async function runSetupWizard(): Promise<void> {
   writeFileSync(CONFIG_ENV, lines.join('\n'), { mode: 0o600 });
 
   // ── Done ───────────────────────────────────────────────────────────────────
-  process.stdout.write('\n' + dim('  ─────────────────────────────────────────\n'));
-  process.stdout.write('  ' + green('✓') + ' ' + bold(`Saved to ${CONFIG_ENV}`) + '\n\n');
-  process.stdout.write(`  ${bold('Provider:')}      ${provider}\n`);
-  process.stdout.write(`  ${bold('Model:')}         ${modelInput || defaultModel}\n`);
-  process.stdout.write(`  ${bold('Execute mode:')}  ${allowExecute ? 'enabled' : 'disabled'}\n`);
-  if (allowExecute) {
-    process.stdout.write(`  ${bold('Auto-confirm:')} ${autoConfirm ? 'enabled' : 'disabled'}\n`);
-  }
-  process.stdout.write('\n  Run ' + bold('dav') + ' to get started.\n\n');
+  note(
+    [
+      `Provider:      ${provider}`,
+      `Model:         ${modelInput || defaultModel}`,
+      `Execute mode:  ${allowExecute ? 'enabled' : 'disabled'}`,
+      allowExecute ? `Auto-confirm:  ${autoConfirm ? 'enabled' : 'disabled'}` : '',
+      '',
+      `Config saved to ${CONFIG_ENV}`,
+    ].filter(Boolean).join('\n'),
+    'Configuration'
+  );
+
+  outro('Run dav to get started.');
 }
 
 /** Remove all DAV-M local data and print the npm uninstall command. */
 export async function runUninstall(): Promise<void> {
-  const { default: readline } = await import('readline');
+  intro('Uninstall DAV-M');
 
-  const bold  = (s: string) => `\x1b[1m${s}\x1b[0m`;
-  const dim   = (s: string) => `\x1b[2m${s}\x1b[0m`;
-  const red   = (s: string) => `\x1b[31m${s}\x1b[0m`;
-  const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+  note(`This will permanently delete:\n  ${CONFIG_DIR}\n  (config, sessions, audit logs)`, 'Warning');
 
-  process.stdout.write('\n' + bold('  Uninstall DAV-M') + '\n\n');
-  process.stdout.write(`  This will permanently delete:\n`);
-  process.stdout.write(`    ${dim('•')} ${CONFIG_DIR}  ${dim('(config, sessions, audit logs)')}\n\n`);
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const confirm = await new Promise<string>((res) => rl.question(`  Are you sure? ${dim('[y/N]')}: `, res));
-  rl.close();
-
-  if (confirm.trim().toLowerCase() !== 'y') {
-    process.stdout.write('\n  Cancelled.\n\n');
-    return;
-  }
+  const confirmed = await confirm({ message: 'Are you sure?', initialValue: false });
+  if (isCancel(confirmed) || !confirmed) { cancel('Cancelled.'); return; }
 
   if (existsSync(CONFIG_DIR)) {
     rmSync(CONFIG_DIR, { recursive: true, force: true });
-    process.stdout.write('\n  ' + green('✓') + ` Removed ${CONFIG_DIR}\n`);
-  } else {
-    process.stdout.write(`\n  ${dim(`${CONFIG_DIR} not found — nothing to remove.`)}\n`);
   }
 
-  process.stdout.write('\n  ' + bold('To remove the dav command, run:') + '\n\n');
-  process.stdout.write('    ' + red('npm uninstall -g dav-ai') + '\n\n');
+  outro(`Done. To remove the dav command, run:\n\n  npm uninstall -g dav-ai`);
 }

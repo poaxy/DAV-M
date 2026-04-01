@@ -1,6 +1,6 @@
 {
   "name": "dav-ai",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "DAV-M — terminal AI assistant powered by Anthropic, OpenAI, and Google Gemini with MCP support",
   "type": "module",
   "bin": {
@@ -26,6 +26,7 @@
     "@ai-sdk/google": "^3.0.53",
     "@ai-sdk/mcp": "^1.0.30",
     "@ai-sdk/openai": "^3.0.48",
+    "@clack/prompts": "^1.2.0",
     "ai": "^6.0.142",
     "cli-highlight": "^2.1.11",
     "commander": "^14.0.0",
